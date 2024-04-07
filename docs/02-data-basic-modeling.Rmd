@@ -1,0 +1,657 @@
+# Objects
+
+-   **Tasks**: Contain data
+-   **Learners**:
+-   **Measures**:
+-   partitions
+
+# Tasks
+
+```{r}
+library(ml3)
+```
+
+some predefined datasets as tasks
+
+```{r}
+mlr_tasks
+```
+
+```{r}
+tsk_mtcars <- tsk("mtcars")
+tsk_mtcars
+```
+
+## Constructing tasks
+
+> Regression example
+
+```{r}
+data("mtcars", package = "datasets")
+mtcars_subset <- subset(mtcars, select = c("mpg", "cyl", "disp"))
+str(mtcars_subset)
+```
+
+```{r}
+tsk_mtcars <- as_task_regr(mtcars_subset, target = "mpg", id = "cars")
+```
+
+> Data can be in any tabular format
+
+```{r}
+tsk_mtcars
+```
+
+```{r}
+library(mlr3viz)
+autoplot(tsk_mtcars, type = "pairs")
+```
+
+## Retrieving data
+
+```{r}
+c(tsk_mtcars$nrow, tsk_mtcars$ncol)
+```
+
+```{r}
+c(Features = tsk_mtcars$feature_names,
+  Target = tsk_mtcars$target_names)
+```
+
+```{r}
+head(tsk_mtcars$row_ids)
+```
+
+**row IDs are not the same as row numbers**
+
+```{r}
+task <- as_task_regr(data.frame(x = runif(5),
+                                y = runif(5)),
+                     target = "y")
+task$row_ids
+```
+
+```{r}
+task$
+  filter(c(4, 1, 3))$
+  row_ids
+```
+
+```{r}
+tsk_mtcars$data()
+```
+
+**selecting rows and columns**
+
+```{r}
+tsk_mtcars$data(rows = c(1, 5, 10),
+                cols = tsk_mtcars$feature_names)
+```
+
+```{r}
+summary(as.data.table(tsk_mtcars))
+```
+
+## Mutation
+
+```{r}
+tsk_mtcars_small <- tsk("mtcars")
+tsk_mtcars_small$
+  select("cyl")$
+  filter(2:3)$
+  data()
+```
+
+Assignment creates a reference so must clone to make a copy.
+
+```{r}
+tsk_mtcars_copy <- tsk_mtcars$clone()
+```
+
+Add cols and rows with `cbind()` and `rbind()`
+
+```{r}
+tsk_mtcars_small$cbind(
+  data.frame(disp = c(150, 160))
+)
+tsk_mtcars_small$rbind(
+  data.frame(mpg = 21, cyl = 5, disp = 170)
+)
+tsk_mtcars_small$data()
+```
+
+# Learners
+
+> Training and predicting
+
+All `Learner` objects include the following metadata, which can be seen in the output above:
+
+-   `$feature_types`: the type of features the learner can handle.
+-   `$packages`: the packages required to be installed to use the learner.
+-   `$properties`: the properties of the learner. For example, the “missings” properties means a model can handle missing data, and “importance” means it can compute the relative importance of each feature.
+-   `$predict_types`: the types of prediction that the model can make ([Section 2.2.2](https://mlr3book.mlr-org.com/chapters/chapter2/data_and_basic_modeling.html#sec-predicting)).
+-   `$param_set`: the set of available hyperparameters ([Section 2.2.3](https://mlr3book.mlr-org.com/chapters/chapter2/data_and_basic_modeling.html#sec-param-set)).
+
+```{r}
+lrn("regr.rpart")
+```
+
+## Training
+
+```{r}
+tsk_mtcars <-  tsk("mtcars")
+lrn_rpart <- lrn("regr.rpart")
+lrn_rpart$train(tsk_mtcars)
+```
+
+```{r}
+lrn_rpart$model
+```
+
+```{r}
+lrn_rpart$help()
+```
+
+### Splitting
+
+> default is 2/3-1/3
+
+```{r}
+splits <-  partition(tsk_mtcars)
+splits
+```
+
+```{r}
+lrn_rpart$train(tsk_mtcars, row_ids = splits$train)
+```
+
+## Predicting
+
+```{r}
+prediction <- lrn_rpart$predict(tsk_mtcars, row_ids = splits$test)
+prediction
+```
+
+```{r}
+prediction$response[1:2]
+```
+
+```{r}
+library(mlr3viz)
+prediction <- lrn_rpart$
+  predict(tsk_mtcars, splits$test)
+autoplot(prediction)
+```
+
+### New data
+
+Data frames can be passed directly to predict with `$predict_newdata()`
+
+```{r}
+mtcars_new <- data.table(
+  cyl = c(5, 6), disp = c(100, 120), hp = c(100, 150),
+  drat = c(4, 3.9), wt = c(3.8, 4.1), qsec = c(18, 19.5), 
+  vs = c(1, 0), am = c(1, 1), gear = c(6, 4), carb = c(3, 5)
+)
+prediction <- lrn_rpart$predict_newdata(mtcars_new)
+prediction
+```
+
+### Prediction type
+
+```{r}
+library(mlr3learners)
+lrn_lm <- lrn("regr.lm", predict_type = "se")
+lrn_lm$
+  train(tsk_mtcars, splits$train)$
+  predict(tsk_mtcars, splits$test)
+```
+
+## Hyperparameters
+
+### Listing
+
+Each learner has a parameter set
+
+```{r}
+lrn_rpart$param_set
+```
+
+### Getting and setting
+
+```{r}
+lrn_rpart <- lrn("regr.rpart", maxdepth = 1)
+```
+
+```{r}
+lrn_rpart$param_set$values
+```
+
+```{r}
+lrn_rpart$
+  train(tsk("mtcars"))$
+  model
+```
+
+Alternatively
+
+```{r}
+lrn_rpart$param_set$values$maxdepth = 2
+lrn_rpart$param_set$values
+```
+
+```{r}
+lrn_rpart$train(tsk("mtcars"))$model
+```
+
+Setting multiple values
+
+On construction
+
+```{r}
+lrn_rpart = lrn("regr.rpart", maxdepth = 3, xval = 1)
+lrn_rpart$param_set$values
+```
+
+Afterwards
+
+```{r}
+lrn_rpart$param_set$set_values(xval = 2, cp = 0.5)
+lrn_rpart$param_set$values
+```
+
+### Dependencies
+
+```{r}
+lrn("regr.svm")$param_set$deps
+```
+
+```{r}
+lrn("regr.svm")$param_set$deps[[1, "cond"]]
+```
+
+```{r}
+lrn("regr.svm")$param_set$deps[[3, "cond"]]
+```
+
+```{r}
+lrn("regr.svm", kernel = "polynomial", degree = 1)
+```
+
+## Baseline learners (featureless)
+
+```{r}
+df <- as_task_regr(
+  data.frame(x = runif(1000), 
+             y = rnorm(1000, 2, 1)),
+             target = "y")
+lrn("regr.featureless")$
+  train(df, 1:995)$
+  predict(df, 996:1000)
+```
+
+# Evaluation
+
+```{r}
+lrn_rpart = lrn("regr.rpart")
+tsk_mtcars = tsk("mtcars")
+splits = partition(tsk_mtcars)
+lrn_rpart$train(tsk_mtcars, splits$train)
+prediction = lrn_rpart$predict(tsk_mtcars, splits$test)
+```
+
+## Measures
+
+```{r}
+as.data.table(msr())
+```
+
+```{r}
+as.data.table(msr()) |> names()
+```
+
+```{r}
+measure <- msr("regr.mae")
+measure
+```
+
+## Scoring predictions
+
+```{r}
+prediction
+```
+
+```{r}
+prediction$score(measure)
+```
+
+```{r}
+measures <- msrs(c("regr.mse", "regr.mae"))
+prediction$score(measures)
+```
+
+## Other measures
+
+-   `msr("time_train")` – The time taken to train a model.
+-   `msr("time_predict")` – The time taken for the model to make predictions.
+-   `msr("time_both")` – The total time taken to train the model and then make predictions.
+-   `msr("selected_features")` – The number of features selected by a model, which can only be used if the model has the “selected_features” property.
+
+```{r}
+measures <- msrs(c("time_train", "time_predict", "time_both"))
+prediction$score(measures, learner = lrn_rpart)
+```
+
+```{r}
+msr("time_train")$properties
+```
+
+```{r}
+c(lrn_rpart$timings, both = sum(lrn_rpart$timings))
+```
+
+```{r}
+msr_sf <- msr("selected_features")
+msr_sf
+```
+
+```{r}
+msr_sf = msr("selected_features")
+msr_sf$param_set
+```
+
+```{r}
+msr_sf$param_set$values$normalize = TRUE
+prediction$score(msr_sf, task = tsk_mtcars, learner = lrn_rpart)
+```
+
+# Basic regression
+
+-   load and partition data (Task)
+-   load featureless learner and decision tree (Learner)
+-   load MSE and MAE (Measure)
+-   train
+-   predict
+
+```{r}
+library(mlr3)
+set.seed(349)
+tsk_mtcars = tsk("mtcars")
+splits = partition(tsk_mtcars)
+lrn_featureless = lrn("regr.featureless")
+lrn_rpart = lrn("regr.rpart", cp = 0.2, maxdepth = 5)
+measures = msrs(c("regr.mse", "regr.mae"))
+lrn_featureless$train(tsk_mtcars, splits$train)
+lrn_rpart$train(tsk_mtcars, splits$train)
+lrn_featureless$predict(tsk_mtcars, splits$test)$score(measures)
+```
+
+```{r}
+lrn_rpart$
+  predict(tsk_mtcars, splits$test)$
+  score(measures)
+```
+
+# Basic Classification
+
+```{r}
+library(mlr3)
+set.seed(349)
+tsk_penguins = tsk("penguins")
+splits = partition(tsk_penguins)
+lrn_featureless = lrn("classif.featureless")
+lrn_rpart = lrn("classif.rpart", cp = 0.2, maxdepth = 5)
+measure = msr("classif.acc")
+lrn_featureless$train(tsk_penguins, splits$train)
+lrn_rpart$train(tsk_penguins, splits$train)
+lrn_featureless$predict(tsk_penguins, splits$test)$score(measure)
+```
+
+```{r}
+lrn_rpart$predict(tsk_penguins, splits$test)$score(measure)
+```
+
+## Classification Tasks
+
+Types: - binary - multiclass
+
+```{r}
+as.data.table(mlr_tasks)[task_type == "classif"]
+```
+
+### Create a task
+
+```{r}
+as_task_classif(palmerpenguins::penguins, target = "species")
+```
+
+Binary
+
+```{r}
+tsk_sonar <- tsk("sonar")
+tsk_sonar
+```
+
+```{r}
+tsk_sonar$class_names
+```
+
+```{r}
+tsk_penguins$properties
+```
+
+```{r}
+tsk_penguins$class_names
+```
+
+Binary classifications also have a `$positive` field defining the positive class.
+
+```{r}
+tsk_sonar$positive
+```
+
+```{r}
+data(Sonar, package = "mlbench")
+tsk_classif <- as_task_classif(Sonar, 
+                               target = "Class",
+                               positive = "R")
+```
+
+```{r}
+tsk_classif$positive
+```
+
+```{r}
+library(ggplot2)
+autoplot(tsk("penguins"), type = "duo") +
+  theme(strip.text.y = element_text(angle = -45, size = 8))
+```
+
+## Classification Learner and Measure
+
+Can use "response" or "prob".
+
+```{r}
+lrn_rpart <-  lrn("classif.rpart", predict_type = "prob")
+lrn_rpart$train(tsk_penguins, splits$train)
+prediction <- lrn_rpart$predict(tsk_penguins, splits$test)
+prediction
+```
+
+```{r}
+as.data.table(msr())[
+  task_type == "classif" & predict_type == "prob" &
+    !sapply(task_properties, function(x) "twoclass" %in% x)
+]
+```
+
+```{r}
+measures <- msrs(c("classif.mbrier", "classif.logloss", "classif.acc"))
+prediction$score(measures)
+```
+
+## Confusion matrix and thresholding
+
+```{r}
+prediction$confusion
+```
+
+```{r}
+autoplot(prediction)
+```
+
+```{r}
+splits <- partition(tsk_sonar)
+lrn_rpart$
+  train(tsk_sonar, splits$train)$
+  predict(tsk_sonar, splits$test)$
+  confusion
+```
+
+## Thresholding
+
+Weighting certain classes
+
+```{r}
+task_credit <-  tsk("german_credit")
+lrn_featureless <-  lrn("classif.featureless", predict_type = "prob")
+split <-  partition(task_credit)
+lrn_featureless$train(task_credit, split$train)
+prediction <-  lrn_featureless$predict(task_credit, split$test)
+prediction$score(msr("classif.acc"))
+```
+
+```{r}
+autoplot(prediction)
+```
+
+While this model may appear to have good performance on the surface, in fact, it just ignores all ‘bad’ customers. Thresholding allows classes to be selected with a different probability threshold, so instead of predicting that a customer has bad credit if P(good) \< 50%, we might predict bad credit if P(good) \< 70% – notice how we write this in terms of the positive class, which in this task is ‘good’.
+
+```{r}
+prediction$set_threshold(0.7)
+prediction$score(msr("classif.acc"))
+```
+
+```{r}
+lrn_rpart = lrn("classif.rpart", predict_type = "prob")
+lrn_rpart$train(task_credit, split$train)
+prediction = lrn_rpart$predict(task_credit, split$test)
+prediction$score(msr("classif.acc"))
+```
+
+```{r}
+prediction$confusion
+```
+
+```{r}
+prediction$set_threshold(0.7)
+prediction$score(msr("classif.acc"))
+```
+
+```{r}
+prediction$confusion
+```
+
+### Multiclass thresholds
+
+```{r}
+probs <- c(0.2, 0.4, 0.1, 0.3)
+thresholds <- c(A = 1, B = 1, C = 1, D = 1)
+probs / thresholds
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+
+tsk_zoo <- tsk("zoo")
+splits <- partition(tsk_zoo)
+lrn_rpart <- lrn("classif.rpart", predict_type = "prob")
+lrn_rpart$train(tsk_zoo, splits$train)
+prediction <- lrn_rpart$predict(tsk_zoo, splits$test)
+before <- autoplot(prediction) + ggtitle("Default thresholds")
+new_thresh <- proportions(table(tsk_zoo$truth(splits$train)))
+new_thresh
+```
+
+```{r}
+prediction$set_threshold(new_thresh)
+after <- autoplot(prediction) + ggtitle("Inverse weighting thresholds")
+before + after + plot_layout(guides = "collect")
+```
+
+# Task column roles
+
+1.  `"feature"`: Features used for prediction.
+2.  `"target"`: Target variable to predict.
+3.  `"name"`: Row names/observation labels, e.g., for `mtcars` this is the `"model"` column.
+4.  `"order"`: Variable(s) used to order data returned by `$data()`; must be sortable with [`order()`](https://rdrr.io/r/base/order.html).
+5.  `"group"`: Variable used to keep observations together during resampling.
+6.  `"stratum"`: Variable(s) to stratify during resampling.
+7.  `"weight"`: Observation weights. Only one numeric column may have this role.
+
+```{r}
+df <- data.frame(mtcars[1:2, ], idx = 2:1)
+tsk_mtcars_order <- as_task_regr(df, target = "mpg")
+tsk_mtcars_order$data(ordered = TRUE)
+```
+
+```{r}
+tsk_mtcars_order$set_col_roles("idx", roles = "order")
+tsk_mtcars_order$data(ordered = TRUE)
+```
+
+The weights column role is used to weight data points differently. 
+
+```{r}
+cancer_unweighted <-  tsk("breast_cancer")
+summary(cancer_unweighted$data()$class)
+```
+
+```{r}
+df <- cancer_unweighted$data()
+df$weights <- ifelse(df$class == "malignant", 2, 1)
+
+cancer_weighted <-  as_task_classif(df, target = "class")
+cancer_weighted$set_col_roles("weights", roles = "weight")
+
+split <-  partition(cancer_unweighted)
+lrn_rf <-  lrn("classif.ranger")
+lrn_rf$train(cancer_unweighted, split$train)$
+  predict(cancer_unweighted, split$test)$score()
+```
+
+```{r}
+lrn_rf$train(cancer_weighted, split$train)$
+  predict(cancer_weighted, split$test)$score()
+```
+
+# Supported learning algorithms
+
+```{r}
+learners_dt = as.data.table(mlr_learners)
+learners_dt
+```
+
+```{r}
+learners_dt[task_type == "classif"]
+```
+
+```{r}
+learners_dt[task_type == "regr" &
+  sapply(predict_types, function(x) "se" %in% x)]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
